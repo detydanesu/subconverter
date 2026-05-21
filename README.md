@@ -3,8 +3,10 @@
 基于 **Cloudflare Worker** 的轻量订阅转换工具。输入订阅链接 → 输出 Clash / Clash Verge Rev / sing-box / v2ray 等客户端可直接使用的配置。
 
 - 一个 Worker 即承载 **API + 静态页**，无需额外服务
-- 支持 **KV 配置多个访问密钥**，同时支持 `?pass=` 与 `Authorization: Bearer` 头
-- 静态页**纯浏览器拼接** URL，密钥不会上送任何第三方
+- 支持 **KV 配置多个访问密钥**，推荐 `Authorization: Bearer` 头鉴权（避免链接泄露）
+- 静态页**纯浏览器拼接** URL，密钥默认仅在内存 / sessionStorage
+- 内置 **SSRF 防护**：拒绝内网/链路本地/回环目标，默认仅 HTTPS
+- 内置 **响应大小上限** 5MB，防止恶意订阅源 OOM/CPU DoS
 - 支持订阅源：节点 URI 列表（明文/Base64）、Clash YAML
 - 支持目标格式：`clash`、`clash-meta`、`singbox`、`v2ray`、`uri`
 - 支持协议：vmess / vless（含 Reality）/ trojan / ss / ssr / hysteria2 / tuic
@@ -12,17 +14,23 @@
 ## 接口
 
 ```
-GET /api/sub?url=<订阅链接>&target=<目标>&pass=<密钥>
+GET /api/sub?url=<订阅链接>&target=<目标>
 GET /api/health
 ```
 
-也可使用请求头鉴权（与 `pass` 二选一即可）：
+### 鉴权（二选一，推荐 Header）
 
 ```
+# 推荐：HTTP 头（不会出现在地址栏 / 浏览器历史 / 大多数日志中）
 Authorization: Bearer <密钥>
+
+# 兼容：URL 查询参数（密钥会随 URL 流入日志、历史、客户端日志）
+GET /api/sub?...&pass=<密钥>
 ```
 
-`target` 取值：
+> ⚠️ `?pass=` 的密钥**会被客户端、浏览器、CDN 日志记录**。仅在客户端不支持自定义请求头时使用。
+
+### `target` 取值
 
 | target        | 适用客户端                                    |
 | ------------- | --------------------------------------------- |
@@ -31,6 +39,17 @@ Authorization: Bearer <密钥>
 | `singbox`     | sing-box / NekoBox / SFI / SFA                |
 | `v2ray`       | v2rayN / v2rayNG / NekoRay（Base64 订阅）     |
 | `uri`         | 任意支持节点 URI 的客户端（明文）             |
+
+### 错误码
+
+| 状态 | 含义                                           |
+| ---- | ---------------------------------------------- |
+| 400  | 参数缺失/非法、订阅 URL 校验失败（含内网拦截） |
+| 401  | 缺少或无效的密钥                               |
+| 405  | 非 GET/HEAD 方法                               |
+| 413  | 上游响应超过 5MB                               |
+| 422  | 订阅源解析后无可用节点                         |
+| 502  | 上游不可达 / 非 2xx                            |
 
 ## 部署
 
@@ -48,13 +67,15 @@ npx wrangler kv namespace create AUTH_KV
 
 把命令输出的 `id` 粘贴到 `wrangler.toml` 的 `[[kv_namespaces]]` 段。
 
-### 3. 配置访问密钥（任选其一或多种组合）
+### 3. 配置访问密钥（任选一种或多种组合）
+
+> 强烈建议密钥使用 ≥ 24 字符的随机串，例如 `openssl rand -hex 32`。
 
 **方式 A：KV 单条密钥**（推荐，最快查询）
 
 ```bash
-npx wrangler kv key put --binding=AUTH_KV "key:my-secret-key" "1"
-npx wrangler kv key put --binding=AUTH_KV "key:another-key" "用户A"
+npx wrangler kv key put --binding=AUTH_KV "key:<your-key>" "1"
+npx wrangler kv key put --binding=AUTH_KV "key:<another-key>" "用户A 备注"
 ```
 
 **方式 B：KV 列表**
@@ -63,24 +84,44 @@ npx wrangler kv key put --binding=AUTH_KV "key:another-key" "用户A"
 npx wrangler kv key put --binding=AUTH_KV "keys" '["k1","k2","k3"]'
 ```
 
-**方式 C：环境变量**（适合临时/简易场景）
+**方式 C：环境变量兜底**
 
 ```bash
 npx wrangler secret put STATIC_KEYS
-# 输入: k1,k2,k3
+# 输入：k1,k2,k3
 ```
 
 > 三种方式可同时存在，任一命中即放行。
 
-### 4. 本地开发
+### 4. （可选）开启 HTTP 订阅源支持
+
+默认仅允许 `https://` 上游订阅源。如需放开：
 
 ```bash
-npm run dev
+npx wrangler secret put ALLOW_HTTP_SUBSCRIPTION
+# 输入：true
 ```
 
-访问 http://127.0.0.1:8787 即可看到前端页面。
+> 不推荐：HTTP 上游订阅会让节点凭据在公网明文传输。
 
-### 5. 部署到 Cloudflare
+### 5. 推荐：在 Cloudflare Dashboard 配置速率限制
+
+密钥一旦泄露，攻击者可滥用 Worker 当作出站代理。建议在 **Worker 路由 / 自定义域** 上加 WAF 速率限制：
+
+1. Cloudflare Dashboard → 选择 Worker 所属域 → **Security → WAF → Rate limiting rules**
+2. 新建规则，匹配条件：`URI Path contains /api/sub`
+3. 限制：例如 `60 requests per 1 minute per IP`，超出动作 `Block`（或 `Managed challenge`）
+
+> 免费版每域 1 条免费规则；Workers Paid Plan 推荐配合 [Workers Rate Limiting API](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) 做按密钥粒度限速。
+
+### 6. 本地开发
+
+```bash
+npm run dev          # 默认端口 8787
+npm run typecheck    # 类型检查
+```
+
+### 7. 部署到 Cloudflare
 
 ```bash
 npm run deploy
@@ -92,8 +133,14 @@ npm run deploy
 
 1. 访问 Worker 的根路径，进入静态页
 2. 填入：原始订阅链接、目标格式、访问密钥
-3. 页面自动拼好形如 `https://your-worker.dev/api/sub?url=...&target=clash&pass=...` 的链接
-4. 把这个链接粘贴到 Clash Verge Rev / sing-box / v2rayN 等客户端的"订阅"中即可
+3. **保留默认勾选的"使用 Authorization 请求头"**（更安全）
+4. 点击"生成订阅链接"，得到：
+   - 一段不含密钥的 URL
+   - 一段 `Authorization: Bearer ...` 请求头
+5. 在客户端的"订阅"中：
+   - URL 填入第 1 段
+   - "请求头/Headers" 填入第 2 段
+6. 客户端不支持自定义 Header 时，取消勾选，密钥会回退到 `?pass=` 形式
 
 ## 目录结构
 
@@ -103,8 +150,8 @@ npm run deploy
 │   └── index.html        前端单页（纯浏览器，无后端依赖）
 ├── src/
 │   ├── index.ts          Worker 入口与路由
-│   ├── auth.ts           KV / env 鉴权
-│   ├── fetcher.ts        订阅源抓取
+│   ├── auth.ts           KV / env 鉴权（常量时间比较）
+│   ├── fetcher.ts        订阅源抓取（5MB 上限）
 │   ├── types.ts          代理节点中间表示
 │   ├── parsers/
 │   │   ├── index.ts      自动识别（base64 / yaml / uri）
@@ -116,33 +163,50 @@ npm run deploy
 │   │   ├── singbox.ts    → sing-box JSON
 │   │   └── uri.ts        → 节点 URI / Base64
 │   └── utils/
-│       └── base64.ts
+│       ├── base64.ts
+│       └── url-guard.ts  SSRF / 内网黑名单 / 协议白名单
 ├── wrangler.toml
 ├── tsconfig.json
 └── package.json
 ```
 
-## 设计说明
+## 安全模型
 
-- **解析与转换严格分离**：所有解析器先把节点归一化为 `ProxyNode` 中间结构，再由转换器输出目标格式，方便后续扩展（新增 Surge / Quantumult X 仅需写一个 converter）
-- **鉴权层级**：`KV key:<value>` (O(1)) → `KV keys` (列表) → `STATIC_KEYS` (env)，前者命中后短路，避免多次 KV 查询
-- **CORS 默认放开**：`Access-Control-Allow-Origin: *`，方便部分客户端的预检请求
-- **抓取 UA**：默认 `ClashforWindows/0.20.39`，可在 `wrangler.toml` 的 `[vars]` 内通过 `DEFAULT_UA` 调整
+| 风险                              | 缓解措施                                                       |
+| --------------------------------- | -------------------------------------------------------------- |
+| 未授权调用                        | KV / env 配置密钥；常量时间比较；最小输入长度校验              |
+| 密钥经 URL 泄露                   | 静态页默认推 Header 鉴权；密钥不写 localStorage（除非显式勾选）|
+| SSRF（内网/元数据/回环）          | `url-guard.ts` 拒绝 RFC1918 / loopback / link-local / `*.local` 等 |
+| 协议混用攻击                      | 仅放行 `http(s)`；默认禁 `http`，需 env 显式开启               |
+| 大响应 OOM / YAML 锚点炸弹 DoS    | Content-Length 预检 + 流式 5MB 上限                            |
+| 错误信息回显内部细节              | 上游错误统一脱敏，详细信息仅 `console.warn` 到 Worker 日志     |
+| 指纹暴露                          | `/api/health` 仅返回 `ok`；不再列出支持的 target               |
+| 时序旁路                          | 列表/env 鉴权使用常量时间比较                                  |
+| 滥用为出站代理（密钥泄露后放大） | 推荐配合 Cloudflare WAF 速率限制（见部署步骤 5）              |
 
-## 安全建议
+### 仍需用户警惕
 
-- 不要把 KV 命名空间设为 public；密钥永远不要写进前端代码
-- 推荐启用 Cloudflare 的 Workers 自定义域名 + WAF 规则限制单 IP 速率
-- 静态页保存到 `localStorage` 的字段仅在用户当前浏览器，不会回传
+- **原始订阅 URL 自带 token**——把它放进 `url=` 参数后，本服务的访问密钥泄露 ≈ 你订阅商的 token 一同泄露。建议：① 仅给可信用户分发密钥；② 一密钥一人，便于撤销
+- **共享设备**：默认密钥放 sessionStorage，关页面即清；但勾选了"在本机记住密钥"后会写 localStorage，请谨慎
+- **客户端日志**：Clash Verge / sing-box 等客户端可能会把订阅 URL 写进自己的 log；用 Header 鉴权可避免
 
 ## 常见问题
 
 **Q：返回 401？**
-密钥未配置或拼错。检查 KV 中是否有 `key:<your-key>` 或 `keys` 列表，或确认 `STATIC_KEYS` 已设置。
+密钥未配置或拼错。检查 KV 中是否有 `key:<your-key>`、`keys` 列表，或确认 `STATIC_KEYS` 已设置。Header 鉴权请确保格式 `Authorization: Bearer <key>`，不接受裸 token。
+
+**Q：返回 400 "禁止访问内网"？**
+SSRF 防护拦截了。订阅 URL 指向了 `127.0.0.1` / `192.168.x.x` / `localhost` / `*.local` 等内部目标。订阅源应当是公网可达的服务。
+
+**Q：返回 400 "默认仅允许 https"？**
+明文 HTTP 上游被默认拒绝。如确需放开（不推荐），见部署步骤 4。
+
+**Q：返回 413 "订阅响应过大"？**
+上游返回超过 5MB。正常订阅文件远小于此，请检查上游是否正确返回订阅而非 HTML 页面。
 
 **Q：返回 422 "未解析出任何节点"？**
 - 订阅源走了反爬（试着改 `DEFAULT_UA`）
-- 订阅源不是上述支持的格式
+- 订阅源不是支持的格式（base64 / Clash YAML / URI 列表之一）
 - 订阅链接需要登录态/IP 白名单
 
 **Q：sing-box 配置中没有某个节点？**

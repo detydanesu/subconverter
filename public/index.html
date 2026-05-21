@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="referrer" content="no-referrer" />
 <title>订阅转换 · Subconverter Web</title>
 <meta name="description" content="基于 Cloudflare Worker 的订阅转换工具：将订阅链接转换为 Clash / Clash Verge Rev / sing-box 等格式" />
 <style>
@@ -17,6 +18,7 @@
     --primary-fg: #ffffff;
     --code-bg: #f1f3f8;
     --ok: #16a34a;
+    --warn: #d97706;
     --err: #dc2626;
     --shadow: 0 8px 24px rgba(15, 23, 42, .06);
   }
@@ -43,24 +45,10 @@
     min-height: 100vh;
     padding: 24px 16px 64px;
   }
-  .container {
-    max-width: 720px;
-    margin: 0 auto;
-  }
-  header {
-    text-align: center;
-    margin-bottom: 28px;
-  }
-  header h1 {
-    margin: 0 0 6px;
-    font-size: 24px;
-    letter-spacing: -.01em;
-  }
-  header p {
-    margin: 0;
-    color: var(--muted);
-    font-size: 14px;
-  }
+  .container { max-width: 720px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 28px; }
+  header h1 { margin: 0 0 6px; font-size: 24px; letter-spacing: -.01em; }
+  header p { margin: 0; color: var(--muted); font-size: 14px; }
   .card {
     background: var(--card);
     border: 1px solid var(--border);
@@ -77,11 +65,8 @@
     margin-bottom: 6px;
     color: var(--fg);
   }
-  .hint {
-    font-size: 12px;
-    color: var(--muted);
-    margin-top: 4px;
-  }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .hint.warn { color: var(--warn); }
   input[type=text], input[type=password], input[type=url], textarea, select {
     width: 100%;
     padding: 10px 12px;
@@ -104,11 +89,7 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 13px;
   }
-  .targets {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
+  .targets { display: flex; flex-wrap: wrap; gap: 8px; }
   .target-chip {
     padding: 7px 14px;
     border: 1px solid var(--border);
@@ -119,6 +100,7 @@
     font-size: 13px;
     user-select: none;
     transition: all .15s;
+    font-family: inherit;
   }
   .target-chip:hover { border-color: var(--primary); }
   .target-chip.active {
@@ -126,12 +108,19 @@
     color: var(--primary-fg);
     border-color: var(--primary);
   }
-  .row {
-    display: flex;
-    gap: 8px;
-    align-items: stretch;
-  }
+  .row { display: flex; gap: 8px; align-items: stretch; }
   .row > input { flex: 1; min-width: 0; }
+  .check-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+  }
+  .check-row input[type=checkbox] { margin: 0; }
+  .check-row label { margin: 0; font-weight: 500; flex: 1; cursor: pointer; }
   button {
     border: none;
     border-radius: 8px;
@@ -152,11 +141,7 @@
     color: var(--fg);
     border: 1px solid var(--border);
   }
-  .actions {
-    margin-top: 16px;
-    display: flex;
-    gap: 8px;
-  }
+  .actions { margin-top: 16px; display: flex; gap: 8px; }
   .output {
     margin-top: 22px;
     padding: 16px;
@@ -189,6 +174,12 @@
     flex-wrap: wrap;
   }
   .output-actions button { padding: 7px 12px; font-size: 12.5px; font-weight: 500; }
+  .header-block {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--border);
+  }
+  .header-block h3 { margin-top: 0; }
   footer {
     text-align: center;
     margin-top: 28px;
@@ -211,20 +202,9 @@
     transition: opacity .2s, transform .2s;
     z-index: 100;
   }
-  .toast.show {
-    opacity: .95;
-    transform: translateX(-50%) translateY(0);
-  }
-  details {
-    margin-top: 14px;
-    font-size: 13px;
-    color: var(--muted);
-  }
-  details summary {
-    cursor: pointer;
-    color: var(--fg);
-    font-weight: 500;
-  }
+  .toast.show { opacity: .95; transform: translateX(-50%) translateY(0); }
+  details { margin-top: 14px; font-size: 13px; color: var(--muted); }
+  details summary { cursor: pointer; color: var(--fg); font-weight: 500; }
   details > div { padding: 10px 0; }
   details code {
     background: var(--code-bg);
@@ -246,7 +226,7 @@
     <div class="field">
       <label for="sub-url">订阅链接</label>
       <textarea id="sub-url" placeholder="https://example.com/sub?token=xxx&#10;支持 base64 / Clash YAML / 节点 URI 列表"></textarea>
-      <div class="hint">仅在浏览器本地拼接结果链接，不会发送到任何服务器</div>
+      <div class="hint">本页所有操作均在浏览器本地完成，链接不会发往任何服务器</div>
     </div>
 
     <div class="field">
@@ -255,18 +235,33 @@
     </div>
 
     <div class="field">
-      <label for="key">访问密钥（pass）</label>
+      <label for="key">访问密钥</label>
       <div class="row">
-        <input id="key" type="password" autocomplete="off" placeholder="部署时配置在 KV 或环境变量中" />
+        <input id="key" type="password" autocomplete="off" placeholder="部署时配置在 KV 或 STATIC_KEYS 环境变量中" />
         <button class="ghost" id="toggle-key" type="button" title="显示/隐藏">👁</button>
       </div>
-      <div class="hint">链接默认带在 <code>?pass=</code>；也可改用 <code>Authorization: Bearer</code> 头自行请求</div>
+      <div class="hint">默认<strong>仅在内存中保留</strong>，关闭页面即清除（除非下方勾选记住密钥）</div>
+    </div>
+
+    <div class="field">
+      <div class="check-row">
+        <input id="auth-mode" type="checkbox" checked />
+        <label for="auth-mode">把密钥放在 <code>Authorization</code> 请求头里（推荐）</label>
+      </div>
+      <div class="hint">勾选后生成的 URL 不含 <code>pass</code>；改为额外提供一段 Header 配置，安全性更高（避免日志/历史泄露）</div>
     </div>
 
     <div class="field">
       <label for="endpoint">服务端地址</label>
       <input id="endpoint" type="url" placeholder="自动使用当前域名" />
       <div class="hint">默认就是你打开本页的地址，留空即可</div>
+    </div>
+
+    <div class="field">
+      <div class="check-row">
+        <input id="remember-key" type="checkbox" />
+        <label for="remember-key">在本机浏览器记住密钥（不安全 / 共用设备请关闭）</label>
+      </div>
     </div>
 
     <div class="actions">
@@ -282,15 +277,29 @@
         <button id="open-url" class="ghost" type="button">在新窗口打开</button>
         <button id="copy-clash" class="ghost" type="button">复制 Clash 一键导入</button>
       </div>
+      <div class="header-block" id="header-block" hidden>
+        <h3>请求头（在客户端添加）</h3>
+        <pre id="result-header"></pre>
+        <div class="output-actions">
+          <button id="copy-header" class="ghost" type="button">复制 Header</button>
+        </div>
+        <div class="hint" style="margin-top: 6px;">
+          客户端不支持自定义 Header 时，请取消上方勾选，密钥会写回 URL 的 <code>pass</code> 参数（隐私性较低）。
+        </div>
+      </div>
     </div>
 
     <details>
       <summary>说明 / 接口文档</summary>
       <div>
-        <p><strong>API 端点：</strong><code>GET /api/sub?url=&lt;订阅&gt;&amp;target=&lt;格式&gt;&amp;pass=&lt;密钥&gt;</code></p>
+        <p><strong>API：</strong><code>GET /api/sub?url=&lt;订阅&gt;&amp;target=&lt;格式&gt;</code></p>
         <p><strong>支持格式：</strong>clash · clash-meta · singbox · v2ray · uri</p>
-        <p><strong>鉴权方式：</strong>查询参数 <code>pass</code> 或请求头 <code>Authorization: Bearer &lt;key&gt;</code>（二选一）</p>
-        <p><strong>密钥配置：</strong></p>
+        <p><strong>鉴权：</strong></p>
+        <ul>
+          <li>推荐：<code>Authorization: Bearer &lt;key&gt;</code> 请求头</li>
+          <li>兼容：URL 查询参数 <code>?pass=&lt;key&gt;</code>（密钥暴露在日志/历史中）</li>
+        </ul>
+        <p><strong>密钥配置（部署侧）：</strong></p>
         <ul>
           <li>KV 单条：<code>wrangler kv key put --binding=AUTH_KV "key:&lt;your-key&gt;" "1"</code></li>
           <li>KV 列表：<code>wrangler kv key put --binding=AUTH_KV "keys" '["k1","k2"]'</code></li>
@@ -321,35 +330,42 @@
 
   var $ = function (id) { return document.getElementById(id); };
 
-  // 持久化（localStorage）：方便用户刷新页面后保留
-  var STORE_KEY = "subconverter:state:v1";
-  var state = loadState();
+  // 持久化策略：
+  //   - 偏好（target、auth-mode、remember-key、url、endpoint）→ localStorage
+  //   - 密钥 key → 仅 sessionStorage 或不存（取决于 remember-key）
+  var PREF_KEY = "subconverter:prefs:v1";
+  var KEY_STORAGE = "subconverter:key:v1";
+  var prefs = loadPrefs();
+  var sessionKey = sessionStorage.getItem(KEY_STORAGE) || "";
+  var persistedKey = prefs.rememberKey ? (localStorage.getItem(KEY_STORAGE) || "") : "";
 
   // 渲染 target 选择器
   var targetsBox = $("targets");
   TARGETS.forEach(function (t) {
     var btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "target-chip" + (state.target === t.id ? " active" : "");
+    btn.className = "target-chip" + (prefs.target === t.id ? " active" : "");
     btn.textContent = t.label;
     btn.title = t.desc;
     btn.dataset.target = t.id;
     btn.addEventListener("click", function () {
-      state.target = t.id;
+      prefs.target = t.id;
       Array.prototype.forEach.call(targetsBox.children, function (c) {
         c.classList.toggle("active", c.dataset.target === t.id);
       });
-      saveState();
-      // 已经生成过结果时，自动刷新
+      savePrefs();
       if (!$("output").hidden) generate();
     });
     targetsBox.appendChild(btn);
   });
 
-  // 回填
-  $("sub-url").value = state.url || "";
-  $("key").value = state.key || "";
-  $("endpoint").value = state.endpoint || "";
+  // 回填非敏感字段
+  $("sub-url").value = prefs.url || "";
+  $("endpoint").value = prefs.endpoint || "";
+  $("auth-mode").checked = prefs.authMode !== false; // 默认 true
+  $("remember-key").checked = !!prefs.rememberKey;
+  // 密钥仅在显式记住时回填，否则 session 优先
+  $("key").value = persistedKey || sessionKey || "";
 
   // 显示/隐藏密钥
   $("toggle-key").addEventListener("click", function () {
@@ -357,23 +373,52 @@
     input.type = input.type === "password" ? "text" : "password";
   });
 
-  // 输入即保存（不立即生成，避免抖动）
-  ["sub-url", "key", "endpoint"].forEach(function (id) {
-    $(id).addEventListener("input", function () {
-      state.url = $("sub-url").value.trim();
-      state.key = $("key").value;
-      state.endpoint = $("endpoint").value.trim();
-      saveState();
-    });
+  // 输入即保存
+  $("sub-url").addEventListener("input", function () {
+    prefs.url = $("sub-url").value.trim();
+    savePrefs();
   });
+  $("endpoint").addEventListener("input", function () {
+    prefs.endpoint = $("endpoint").value.trim();
+    savePrefs();
+  });
+  $("auth-mode").addEventListener("change", function () {
+    prefs.authMode = $("auth-mode").checked;
+    savePrefs();
+    if (!$("output").hidden) generate();
+  });
+  $("remember-key").addEventListener("change", function () {
+    prefs.rememberKey = $("remember-key").checked;
+    savePrefs();
+    persistKeyIfNeeded();
+  });
+  $("key").addEventListener("input", function () {
+    // 始终写 session（关闭页面即清）
+    var k = $("key").value;
+    if (k) sessionStorage.setItem(KEY_STORAGE, k);
+    else sessionStorage.removeItem(KEY_STORAGE);
+    persistKeyIfNeeded();
+  });
+
+  function persistKeyIfNeeded() {
+    var k = $("key").value;
+    if (prefs.rememberKey && k) {
+      localStorage.setItem(KEY_STORAGE, k);
+    } else {
+      localStorage.removeItem(KEY_STORAGE);
+    }
+  }
 
   $("generate").addEventListener("click", generate);
   $("reset").addEventListener("click", function () {
     $("sub-url").value = "";
     $("key").value = "";
     $("endpoint").value = "";
-    state = { target: state.target };
-    saveState();
+    sessionStorage.removeItem(KEY_STORAGE);
+    localStorage.removeItem(KEY_STORAGE);
+    prefs.url = "";
+    prefs.endpoint = "";
+    savePrefs();
     $("output").hidden = true;
   });
 
@@ -381,16 +426,27 @@
     copyText($("result-url").textContent, "已复制订阅链接");
   });
   $("open-url").addEventListener("click", function () {
-    window.open($("result-url").textContent, "_blank", "noopener");
+    if (prefs.authMode && $("key").value) {
+      if (!confirm("当前使用 Header 鉴权，新窗口直接打开会丢失密钥（401）。仍要继续？")) return;
+    }
+    window.open($("result-url").textContent, "_blank", "noopener,noreferrer");
   });
   $("copy-clash").addEventListener("click", function () {
     var url = $("result-url").textContent;
-    // Clash Verge Rev 一键导入协议
+    if (prefs.authMode && $("key").value) {
+      if (!confirm("Clash 一键导入不支持 Header；继续将自动改用 ?pass= 形式（密钥会进入客户端日志）。")) return;
+      // 导出降级版 URL（带 pass）
+      var u = new URL(url);
+      u.searchParams.set("pass", $("key").value);
+      url = u.toString();
+    }
     var importUrl = "clash://install-config?url=" + encodeURIComponent(url) + "&name=Subconverter";
     copyText(importUrl, "已复制 Clash 一键导入链接");
   });
+  $("copy-header").addEventListener("click", function () {
+    copyText($("result-header").textContent, "已复制 Header");
+  });
 
-  // 回车快捷生成
   $("sub-url").addEventListener("keydown", function (e) {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") generate();
   });
@@ -400,32 +456,30 @@
     var key = $("key").value;
     var endpoint = $("endpoint").value.trim() || (location.origin);
 
-    if (!subUrl) {
-      toast("请填写订阅链接", true);
-      $("sub-url").focus();
-      return;
-    }
+    if (!subUrl) { toast("请填写订阅链接", true); $("sub-url").focus(); return; }
     if (!/^https?:\/\//i.test(subUrl)) {
       toast("订阅链接需以 http:// 或 https:// 开头", true);
       return;
     }
-    // 简单校验 endpoint
     var base;
-    try {
-      base = new URL(endpoint);
-    } catch (e) {
-      toast("服务端地址不合法", true);
-      return;
-    }
+    try { base = new URL(endpoint); }
+    catch (e) { toast("服务端地址不合法", true); return; }
 
     var u = new URL("/api/sub", base);
     u.searchParams.set("url", subUrl);
-    u.searchParams.set("target", state.target || "clash");
-    if (key) u.searchParams.set("pass", key);
+    u.searchParams.set("target", prefs.target || "clash");
+
+    var useHeader = prefs.authMode && key;
+    if (key && !useHeader) u.searchParams.set("pass", key);
 
     $("result-url").textContent = u.toString();
+    if (useHeader) {
+      $("result-header").textContent = "Authorization: Bearer " + key;
+      $("header-block").hidden = false;
+    } else {
+      $("header-block").hidden = true;
+    }
     $("output").hidden = false;
-    // 滚动到结果
     $("output").scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
@@ -436,9 +490,7 @@
         function () { toast(msg || "已复制"); },
         function () { fallbackCopy(text, msg); }
       );
-    } else {
-      fallbackCopy(text, msg);
-    }
+    } else { fallbackCopy(text, msg); }
   }
   function fallbackCopy(text, msg) {
     var ta = document.createElement("textarea");
@@ -451,7 +503,6 @@
     catch (e) { toast("复制失败，请手动复制", true); }
     document.body.removeChild(ta);
   }
-
   var toastTimer;
   function toast(msg, isError) {
     var el = $("toast");
@@ -462,20 +513,23 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { el.classList.remove("show"); }, 1800);
   }
-
-  function loadState() {
+  function loadPrefs() {
     try {
-      var s = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+      var s = JSON.parse(localStorage.getItem(PREF_KEY) || "{}");
       if (!s.target) s.target = "clash";
+      if (typeof s.authMode !== "boolean") s.authMode = true;
       return s;
     } catch (e) {
-      return { target: "clash" };
+      return { target: "clash", authMode: true };
     }
   }
-  function saveState() {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+  function savePrefs() {
+    try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); }
     catch (e) { /* quota / private mode */ }
   }
+
+  // 一次性数据迁移：清掉旧版的明文 state
+  try { localStorage.removeItem("subconverter:state:v1"); } catch (e) {}
 })();
 </script>
 
