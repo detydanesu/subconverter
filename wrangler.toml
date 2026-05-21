@@ -14,7 +14,7 @@ not_found_handling = "single-page-application"
 # 然后把生成的 id 粘贴到下面
 [[kv_namespaces]]
 binding = "AUTH_KV"
-id = "REPLACE_WITH_YOUR_KV_ID"
+id = "e56bd26ac5cc4e09a54d78982b68d96e"
 
 # 可选：通过环境变量直接配置一组密钥（逗号分隔），优先级低于 KV
 # wrangler secret put STATIC_KEYS
