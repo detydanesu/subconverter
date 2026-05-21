@@ -1,0 +1,21 @@
+{
+  "name": "subconverter-web",
+  "version": "0.1.0",
+  "description": "基于 Cloudflare Worker 的订阅转换工具，支持 Clash/Clash Verge Rev/sing-box 等格式",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250109.0",
+    "@types/js-yaml": "^4.0.9",
+    "typescript": "^5.6.3",
+    "wrangler": "^3.99.0"
+  }
+}
