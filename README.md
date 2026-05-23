@@ -1,4 +1,4 @@
-# Subconverter Web
+# Subconverter
 
 基于 **Cloudflare Worker** 的轻量订阅转换工具。输入订阅链接 → 输出 Clash / Clash Verge Rev / sing-box / v2ray 等客户端可直接使用的配置。
 
@@ -53,21 +53,37 @@ GET /api/sub?...&pass=<密钥>
 
 ## 部署
 
-### 1. 安装依赖
+### 一键部署（推荐）
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/dianbanjiu/subconverter)
+
+点击按钮后，Cloudflare 会自动 fork 本仓库到你的 GitHub、创建 `AUTH_KV` 命名空间、写回 ID 并完成首次部署。部署后只需按下文 **步骤 3** 配置访问密钥即可使用。
+
+### 手动部署
+
+#### 1. 安装依赖
 
 ```bash
 npm install
 ```
 
-### 2. 创建 KV 命名空间
+#### 2. 创建 KV 命名空间
 
 ```bash
 npx wrangler kv namespace create AUTH_KV
 ```
 
-把命令输出的 `id` 粘贴到 `wrangler.toml` 的 `[[kv_namespaces]]` 段。
+把命令输出的 `id` 粘贴到 `wrangler.toml`，替换占位符 `REPLACE_WITH_YOUR_KV_ID`：
 
-### 3. 配置访问密钥（任选一种或多种组合）
+```toml
+[[kv_namespaces]]
+binding = "AUTH_KV"
+id = "你刚拿到的 id"
+```
+
+> 仓库自带的 `wrangler.toml` 故意只放占位符，方便 fork 后各自填写自己的 KV ID。**KV ID 不是密钥**，写进自己 fork 的仓库里没有安全问题。
+
+#### 3. 配置访问密钥（任选一种或多种组合）
 
 > 强烈建议密钥使用 ≥ 24 字符的随机串，例如 `openssl rand -hex 32`。
 
@@ -93,7 +109,7 @@ npx wrangler secret put STATIC_KEYS
 
 > 三种方式可同时存在，任一命中即放行。
 
-### 4. （可选）开启 HTTP 订阅源支持
+#### 4. （可选）开启 HTTP 订阅源支持
 
 默认仅允许 `https://` 上游订阅源。如需放开：
 
@@ -104,7 +120,7 @@ npx wrangler secret put ALLOW_HTTP_SUBSCRIPTION
 
 > 不推荐：HTTP 上游订阅会让节点凭据在公网明文传输。
 
-### 5. 推荐：在 Cloudflare Dashboard 配置速率限制
+#### 5. 推荐：在 Cloudflare Dashboard 配置速率限制
 
 密钥一旦泄露，攻击者可滥用 Worker 当作出站代理。建议在 **Worker 路由 / 自定义域** 上加 WAF 速率限制：
 
@@ -114,14 +130,14 @@ npx wrangler secret put ALLOW_HTTP_SUBSCRIPTION
 
 > 免费版每域 1 条免费规则；Workers Paid Plan 推荐配合 [Workers Rate Limiting API](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) 做按密钥粒度限速。
 
-### 6. 本地开发
+#### 6. 本地开发
 
 ```bash
 npm run dev          # 默认端口 8787
 npm run typecheck    # 类型检查
 ```
 
-### 7. 部署到 Cloudflare
+#### 7. 部署到 Cloudflare
 
 ```bash
 npm run deploy

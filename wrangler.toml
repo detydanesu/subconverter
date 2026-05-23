@@ -10,8 +10,8 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 
 # KV 命名空间：保存允许调用的密钥列表
-# 部署前请运行：wrangler kv namespace create AUTH_KV
-# 然后把生成的 id 粘贴到下面
+# fork 本仓库后请运行：npx wrangler kv namespace create AUTH_KV
+# 然后用命令输出的 id 替换下面的占位符 REPLACE_WITH_YOUR_KV_ID
 [[kv_namespaces]]
 binding = "AUTH_KV"
 id = "e56bd26ac5cc4e09a54d78982b68d96e"
