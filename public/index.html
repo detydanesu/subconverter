@@ -230,6 +230,12 @@
     </div>
 
     <div class="field">
+      <label for="config-url">OpenClash 外部配置（可选）</label>
+      <input id="config-url" type="url" placeholder="https://raw.githubusercontent.com/.../config.ini" />
+      <div class="hint">支持 ACL4SSR/SubConverter INI 中的 ruleset 与 custom_proxy_group；远程规则会在生成时直接展开，避免第三方规则缓存。</div>
+    </div>
+
+    <div class="field">
       <label>目标格式</label>
       <div class="targets" id="targets"></div>
     </div>
@@ -237,7 +243,7 @@
     <div class="field">
       <label for="key">访问密钥</label>
       <div class="row">
-        <input id="key" type="password" autocomplete="off" placeholder="部署时配置在 KV 或 STATIC_KEYS 环境变量中" />
+        <input id="key" type="password" autocomplete="off" placeholder="部署时配置在 STATIC_KEYS Cloudflare Secret 中" />
         <button class="ghost" id="toggle-key" type="button" title="显示/隐藏">👁</button>
       </div>
       <div class="hint">默认<strong>仅在内存中保留</strong>，关闭页面即清除（除非下方勾选记住密钥）</div>
@@ -292,7 +298,7 @@
     <details>
       <summary>说明 / 接口文档</summary>
       <div>
-        <p><strong>API：</strong><code>GET /api/sub?url=&lt;订阅&gt;&amp;target=&lt;格式&gt;</code></p>
+        <p><strong>API：</strong><code>GET /sub?url=&lt;订阅&gt;&amp;target=clash-meta&amp;config=&lt;外部 INI&gt;</code></p>
         <p><strong>支持格式：</strong>clash · clash-meta · singbox · v2ray · uri</p>
         <p><strong>鉴权：</strong></p>
         <ul>
@@ -301,9 +307,7 @@
         </ul>
         <p><strong>密钥配置（部署侧）：</strong></p>
         <ul>
-          <li>KV 单条：<code>wrangler kv key put --binding=AUTH_KV "key:&lt;your-key&gt;" "1"</code></li>
-          <li>KV 列表：<code>wrangler kv key put --binding=AUTH_KV "keys" '["k1","k2"]'</code></li>
-          <li>环境变量：<code>wrangler secret put STATIC_KEYS</code> 然后输入 <code>k1,k2</code></li>
+          <li>Cloudflare Secret：<code>wrangler secret put STATIC_KEYS</code>，值可为单个密钥或逗号分隔的多个密钥</li>
         </ul>
       </div>
     </details>
@@ -361,6 +365,7 @@
 
   // 回填非敏感字段
   $("sub-url").value = prefs.url || "";
+  $("config-url").value = prefs.configUrl || "";
   $("endpoint").value = prefs.endpoint || "";
   $("auth-mode").checked = prefs.authMode !== false; // 默认 true
   $("remember-key").checked = !!prefs.rememberKey;
@@ -380,6 +385,10 @@
   });
   $("endpoint").addEventListener("input", function () {
     prefs.endpoint = $("endpoint").value.trim();
+    savePrefs();
+  });
+  $("config-url").addEventListener("input", function () {
+    prefs.configUrl = $("config-url").value.trim();
     savePrefs();
   });
   $("auth-mode").addEventListener("change", function () {
@@ -412,11 +421,13 @@
   $("generate").addEventListener("click", generate);
   $("reset").addEventListener("click", function () {
     $("sub-url").value = "";
+    $("config-url").value = "";
     $("key").value = "";
     $("endpoint").value = "";
     sessionStorage.removeItem(KEY_STORAGE);
     localStorage.removeItem(KEY_STORAGE);
     prefs.url = "";
+    prefs.configUrl = "";
     prefs.endpoint = "";
     savePrefs();
     $("output").hidden = true;
@@ -465,9 +476,17 @@
     try { base = new URL(endpoint); }
     catch (e) { toast("服务端地址不合法", true); return; }
 
-    var u = new URL("/api/sub", base);
+    var u = new URL("/sub", base);
     u.searchParams.set("url", subUrl);
-    u.searchParams.set("target", prefs.target || "clash");
+    u.searchParams.set("target", prefs.target || "clash-meta");
+    var configUrl = $("config-url").value.trim();
+    if (configUrl) {
+      if (!/^https?:\/\//i.test(configUrl)) {
+        toast("外部配置链接需以 http:// 或 https:// 开头", true);
+        return;
+      }
+      u.searchParams.set("config", configUrl);
+    }
 
     var useHeader = prefs.authMode && key;
     if (key && !useHeader) u.searchParams.set("pass", key);
@@ -516,11 +535,11 @@
   function loadPrefs() {
     try {
       var s = JSON.parse(localStorage.getItem(PREF_KEY) || "{}");
-      if (!s.target) s.target = "clash";
+      if (!s.target) s.target = "clash-meta";
       if (typeof s.authMode !== "boolean") s.authMode = true;
       return s;
     } catch (e) {
-      return { target: "clash", authMode: true };
+      return { target: "clash-meta", authMode: true };
     }
   }
   function savePrefs() {

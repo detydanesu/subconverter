@@ -3,11 +3,18 @@ import yaml from "js-yaml";
 import type { ProxyNode } from "../types";
 
 export function toClash(nodes: ProxyNode[]): string {
+  return dumpClashConfig(toClashConfig(nodes));
+}
+
+export function toClashConfig(nodes: ProxyNode[]): Record<string, unknown> {
   const proxies = nodes.map(toClashProxy).filter(Boolean) as Record<string, any>[];
   const names = dedupNames(proxies.map((p) => p.name as string));
   proxies.forEach((p, i) => (p.name = names[i]));
 
-  const config = buildBaseConfig(proxies);
+  return buildBaseConfig(proxies);
+}
+
+export function dumpClashConfig(config: Record<string, unknown>): string {
   return yaml.dump(config, {
     indent: 2,
     lineWidth: -1,
@@ -180,7 +187,7 @@ function dedupNames(names: string[]): string[] {
   });
 }
 
-function buildBaseConfig(proxies: Record<string, any>[]): any {
+function buildBaseConfig(proxies: Record<string, any>[]): Record<string, unknown> {
   const proxyNames = proxies.map((p) => p.name);
   return {
     "mixed-port": 7890,

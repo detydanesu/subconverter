@@ -110,13 +110,4 @@ export type ProxyNode =
   | Hysteria2Node
   | TuicNode;
 
-export interface Env {
-  AUTH_KV: KVNamespace;
-  ASSETS: Fetcher;
-  DEFAULT_UA?: string;
-  STATIC_KEYS?: string;
-  // 设为 "true" 后允许 http:// 订阅源（默认仅允许 https）
-  ALLOW_HTTP_SUBSCRIPTION?: string;
-}
-
 export type Target = "clash" | "clash-meta" | "singbox" | "v2ray" | "uri";

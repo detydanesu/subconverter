@@ -1,7 +1,5 @@
 // 抓取订阅源原始文本
 // - URL 校验（SSRF 防护、HTTPS 强制）由调用方负责，本模块只关心传输与大小
-import type { Env } from "./types";
-
 // 5MB；正常订阅文件远小于此，足够覆盖大节点池
 const MAX_SUBSCRIPTION_BYTES = 5 * 1024 * 1024;
 
@@ -28,16 +26,22 @@ export async function fetchSubscription(url: URL, env: Env): Promise<Subscriptio
     resp = await fetch(url.toString(), {
       headers: { "User-Agent": ua, Accept: "*/*" },
       redirect: "follow",
-      cf: { cacheTtl: 60, cacheEverything: false },
+      cache: "no-store",
     });
   } catch (e) {
     // 网络层错误，不向客户端透传细节
-    console.warn("fetchSubscription network error:", e);
+    console.warn(JSON.stringify({
+      message: "upstream subscription fetch failed",
+      error: e instanceof Error ? e.message : "network error",
+    }));
     throw new FetchUpstreamError(502, "无法连接订阅源");
   }
 
   if (!resp.ok) {
-    console.warn("fetchSubscription upstream status:", resp.status, url.toString());
+    console.warn(JSON.stringify({
+      message: "upstream subscription returned an error",
+      status: resp.status,
+    }));
     throw new FetchUpstreamError(502, `订阅源返回 ${resp.status}`);
   }
 
@@ -47,7 +51,7 @@ export async function fetchSubscription(url: URL, env: Env): Promise<Subscriptio
     const declared = parseInt(lenHeader, 10);
     if (!isNaN(declared) && declared > MAX_SUBSCRIPTION_BYTES) {
       // 主动取消 body
-      resp.body?.cancel().catch(() => {});
+      void resp.body?.cancel().catch(() => {});
       throw new FetchUpstreamError(413, "订阅响应过大");
     }
   }

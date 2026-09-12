@@ -26,9 +26,9 @@ export function parseUri(uri: string): ProxyNode | null {
     if (trimmed.startsWith("hysteria2://") || trimmed.startsWith("hy2://"))
       return parseHy2(trimmed);
     if (trimmed.startsWith("tuic://")) return parseTuic(trimmed);
-  } catch (e) {
+  } catch {
     // 单条解析失败不影响整体
-    console.warn("parseUri failed:", uri.slice(0, 60), e);
+    console.warn(JSON.stringify({ message: "subscription URI parsing failed" }));
   }
   return null;
 }
@@ -298,7 +298,9 @@ function parseAuthorityUri(uri: string, prefix: string): AuthorityUri | null {
   const atIdx = auth.lastIndexOf("@");
   if (atIdx < 0) return null;
   const userinfo = auth.slice(0, atIdx);
-  const hostport = auth.slice(atIdx + 1);
+  // Many Hysteria2 subscription generators emit host:port/?query. The slash is
+  // a URL path delimiter, not part of the port.
+  const hostport = auth.slice(atIdx + 1).replace(/\/$/, "");
   // IPv6 处理：[::1]:443
   const m = /^\[([^\]]+)\]:(\d+)$/.exec(hostport) || /^([^:]+):(\d+)$/.exec(hostport);
   if (!m) return null;

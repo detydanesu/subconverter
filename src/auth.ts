@@ -1,15 +1,8 @@
-// 鉴权：支持 KV 存储的密钥列表 + 环境变量兜底
-// KV 中的键名约定：
-//   - "keys"        -> JSON 数组 ["key1","key2"] 或换行分隔字符串
-//   - "key:<value>" -> 单条密钥（值可为 "1" 或备注信息），便于按密钥粒度管理
-// 同时支持从 STATIC_KEYS 环境变量（逗号或换行分隔）兜底
+// 鉴权：密钥只保存在 Cloudflare Secret STATIC_KEYS 中。
 //
 // 安全说明：
-//   - "key:<value>" 直查路径走 KV.get 哈希查找，不存在密文比较
-//   - 列表/env 路径使用常量时间比较，避免理论上的时序旁路
+//   - 列表使用常量时间比较，避免理论上的时序旁路
 //   - 强烈建议密钥使用 ≥ 24 字符的随机串
-
-import type { Env } from "./types";
 
 export async function authenticate(req: Request, env: Env, providedPass: string | null): Promise<boolean> {
   const headerPass = extractAuthHeader(req);
@@ -18,28 +11,7 @@ export async function authenticate(req: Request, env: Env, providedPass: string 
   // 极端防御：拒绝过短/过长的输入，避免被用作探测
   if (candidate.length < 1 || candidate.length > 512) return false;
 
-  // 1. KV 单条密钥（最快路径，O(1) 查询）
-  if (env.AUTH_KV) {
-    try {
-      const v = await env.AUTH_KV.get(`key:${candidate}`);
-      if (v !== null) return true;
-    } catch (e) {
-      console.warn("KV get failed:", e);
-    }
-
-    // 2. KV 中的 keys 列表
-    try {
-      const raw = await env.AUTH_KV.get("keys");
-      if (raw) {
-        const list = parseKeyList(raw);
-        if (listIncludesConstantTime(list, candidate)) return true;
-      }
-    } catch (e) {
-      console.warn("KV keys read failed:", e);
-    }
-  }
-
-  // 3. 环境变量兜底
+  // Cloudflare Secret 环境变量
   if (env.STATIC_KEYS) {
     const list = parseKeyList(env.STATIC_KEYS);
     if (listIncludesConstantTime(list, candidate)) return true;

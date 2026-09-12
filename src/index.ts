@@ -2,8 +2,9 @@
 import { authenticate } from "./auth";
 import { SUPPORTED_TARGETS, convert, isValidTarget } from "./converters";
 import { FetchUpstreamError, fetchSubscription } from "./fetcher";
+import { toOpenClash } from "./openclash";
 import { parseAny } from "./parsers";
-import type { Env, Target } from "./types";
+import type { Target } from "./types";
 import { validateSubscriptionUrl } from "./utils/url-guard";
 
 export default {
@@ -11,7 +12,7 @@ export default {
     const url = new URL(req.url);
 
     // API 路由
-    if (url.pathname === "/api/sub") {
+    if (url.pathname === "/api/sub" || url.pathname === "/sub") {
       return handleSub(req, env, url);
     }
     if (url.pathname === "/api/health") {
@@ -36,6 +37,7 @@ async function handleSub(req: Request, env: Env, url: URL): Promise<Response> {
   const subUrl = url.searchParams.get("url");
   const target = (url.searchParams.get("target") || "clash").toLowerCase();
   const pass = url.searchParams.get("pass");
+  const configUrl = url.searchParams.get("config");
 
   // 鉴权前不暴露任何业务细节：未通过鉴权一律 401，避免被作为参数探测器
   const authed = await authenticate(req, env, pass);
@@ -78,7 +80,24 @@ async function handleSub(req: Request, env: Env, url: URL): Promise<Response> {
     return errText("未从订阅源解析出任何节点（格式不支持或源拒绝访问）", 422);
   }
 
-  const result = convert(target as Target, nodes);
+  let result = convert(target as Target, nodes);
+  if (configUrl && (target === "clash" || target === "clash-meta")) {
+    const allowHttp = (env.ALLOW_HTTP_SUBSCRIPTION || "").toLowerCase() === "true";
+    const profileValidation = validateSubscriptionUrl(configUrl, { allowHttp });
+    if (!profileValidation.ok) return errText(`外部配置无效: ${profileValidation.reason}`, 400);
+    try {
+      const profile = await fetchSubscription(profileValidation.url, env);
+      result = {
+        body: await toOpenClash(nodes, profile.text, env),
+        contentType: "text/yaml; charset=utf-8",
+        filename: "openclash.yaml",
+      };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "外部配置处理失败";
+      console.error(JSON.stringify({ message: "OpenClash profile generation failed", error: message }));
+      return errText(message, e instanceof FetchUpstreamError ? e.status : 422);
+    }
+  }
 
   const headers: Record<string, string> = {
     "Content-Type": result.contentType,
