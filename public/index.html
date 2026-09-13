@@ -174,12 +174,6 @@
     flex-wrap: wrap;
   }
   .output-actions button { padding: 7px 12px; font-size: 12.5px; font-weight: 500; }
-  .header-block {
-    margin-top: 14px;
-    padding-top: 14px;
-    border-top: 1px dashed var(--border);
-  }
-  .header-block h3 { margin-top: 0; }
   footer {
     text-align: center;
     margin-top: 28px;
@@ -241,33 +235,9 @@
     </div>
 
     <div class="field">
-      <label for="key">访问密钥</label>
-      <div class="row">
-        <input id="key" type="password" autocomplete="off" placeholder="部署时配置在 STATIC_KEYS Cloudflare Secret 中" />
-        <button class="ghost" id="toggle-key" type="button" title="显示/隐藏">👁</button>
-      </div>
-      <div class="hint">默认<strong>仅在内存中保留</strong>，关闭页面即清除（除非下方勾选记住密钥）</div>
-    </div>
-
-    <div class="field">
-      <div class="check-row">
-        <input id="auth-mode" type="checkbox" checked />
-        <label for="auth-mode">把密钥放在 <code>Authorization</code> 请求头里（推荐）</label>
-      </div>
-      <div class="hint">勾选后生成的 URL 不含 <code>pass</code>；改为额外提供一段 Header 配置，安全性更高（避免日志/历史泄露）</div>
-    </div>
-
-    <div class="field">
       <label for="endpoint">服务端地址</label>
       <input id="endpoint" type="url" placeholder="自动使用当前域名" />
       <div class="hint">默认就是你打开本页的地址，留空即可</div>
-    </div>
-
-    <div class="field">
-      <div class="check-row">
-        <input id="remember-key" type="checkbox" />
-        <label for="remember-key">在本机浏览器记住密钥（不安全 / 共用设备请关闭）</label>
-      </div>
     </div>
 
     <div class="actions">
@@ -283,16 +253,6 @@
         <button id="open-url" class="ghost" type="button">在新窗口打开</button>
         <button id="copy-clash" class="ghost" type="button">复制 Clash 一键导入</button>
       </div>
-      <div class="header-block" id="header-block" hidden>
-        <h3>请求头（在客户端添加）</h3>
-        <pre id="result-header"></pre>
-        <div class="output-actions">
-          <button id="copy-header" class="ghost" type="button">复制 Header</button>
-        </div>
-        <div class="hint" style="margin-top: 6px;">
-          客户端不支持自定义 Header 时，请取消上方勾选，密钥会写回 URL 的 <code>pass</code> 参数（隐私性较低）。
-        </div>
-      </div>
     </div>
 
     <details>
@@ -300,15 +260,7 @@
       <div>
         <p><strong>API：</strong><code>GET /sub?url=&lt;订阅&gt;&amp;target=clash-meta&amp;config=&lt;外部 INI&gt;</code></p>
         <p><strong>支持格式：</strong>clash · clash-meta · singbox · v2ray · uri</p>
-        <p><strong>鉴权：</strong></p>
-        <ul>
-          <li>推荐：<code>Authorization: Bearer &lt;key&gt;</code> 请求头</li>
-          <li>兼容：URL 查询参数 <code>?pass=&lt;key&gt;</code>（密钥暴露在日志/历史中）</li>
-        </ul>
-        <p><strong>密钥配置（部署侧）：</strong></p>
-        <ul>
-          <li>Cloudflare Secret：<code>wrangler secret put STATIC_KEYS</code>，值可为单个密钥或逗号分隔的多个密钥</li>
-        </ul>
+        <p><strong>访问方式：</strong>公开访问，无需密钥或自定义请求头。</p>
       </div>
     </details>
   </div>
@@ -334,14 +286,12 @@
 
   var $ = function (id) { return document.getElementById(id); };
 
-  // 持久化策略：
-  //   - 偏好（target、auth-mode、remember-key、url、endpoint）→ localStorage
-  //   - 密钥 key → 仅 sessionStorage 或不存（取决于 remember-key）
+  // 偏好（target、url、endpoint）保存在 localStorage。
   var PREF_KEY = "subconverter:prefs:v1";
-  var KEY_STORAGE = "subconverter:key:v1";
   var prefs = loadPrefs();
-  var sessionKey = sessionStorage.getItem(KEY_STORAGE) || "";
-  var persistedKey = prefs.rememberKey ? (localStorage.getItem(KEY_STORAGE) || "") : "";
+  // 清理旧版页面可能遗留的访问密钥。
+  sessionStorage.removeItem("subconverter:key:v1");
+  localStorage.removeItem("subconverter:key:v1");
 
   // 渲染 target 选择器
   var targetsBox = $("targets");
@@ -363,20 +313,10 @@
     targetsBox.appendChild(btn);
   });
 
-  // 回填非敏感字段
+  // 回填字段
   $("sub-url").value = prefs.url || "";
   $("config-url").value = prefs.configUrl || "";
   $("endpoint").value = prefs.endpoint || "";
-  $("auth-mode").checked = prefs.authMode !== false; // 默认 true
-  $("remember-key").checked = !!prefs.rememberKey;
-  // 密钥仅在显式记住时回填，否则 session 优先
-  $("key").value = persistedKey || sessionKey || "";
-
-  // 显示/隐藏密钥
-  $("toggle-key").addEventListener("click", function () {
-    var input = $("key");
-    input.type = input.type === "password" ? "text" : "password";
-  });
 
   // 输入即保存
   $("sub-url").addEventListener("input", function () {
@@ -391,41 +331,11 @@
     prefs.configUrl = $("config-url").value.trim();
     savePrefs();
   });
-  $("auth-mode").addEventListener("change", function () {
-    prefs.authMode = $("auth-mode").checked;
-    savePrefs();
-    if (!$("output").hidden) generate();
-  });
-  $("remember-key").addEventListener("change", function () {
-    prefs.rememberKey = $("remember-key").checked;
-    savePrefs();
-    persistKeyIfNeeded();
-  });
-  $("key").addEventListener("input", function () {
-    // 始终写 session（关闭页面即清）
-    var k = $("key").value;
-    if (k) sessionStorage.setItem(KEY_STORAGE, k);
-    else sessionStorage.removeItem(KEY_STORAGE);
-    persistKeyIfNeeded();
-  });
-
-  function persistKeyIfNeeded() {
-    var k = $("key").value;
-    if (prefs.rememberKey && k) {
-      localStorage.setItem(KEY_STORAGE, k);
-    } else {
-      localStorage.removeItem(KEY_STORAGE);
-    }
-  }
-
   $("generate").addEventListener("click", generate);
   $("reset").addEventListener("click", function () {
     $("sub-url").value = "";
     $("config-url").value = "";
-    $("key").value = "";
     $("endpoint").value = "";
-    sessionStorage.removeItem(KEY_STORAGE);
-    localStorage.removeItem(KEY_STORAGE);
     prefs.url = "";
     prefs.configUrl = "";
     prefs.endpoint = "";
@@ -437,25 +347,12 @@
     copyText($("result-url").textContent, "已复制订阅链接");
   });
   $("open-url").addEventListener("click", function () {
-    if (prefs.authMode && $("key").value) {
-      if (!confirm("当前使用 Header 鉴权，新窗口直接打开会丢失密钥（401）。仍要继续？")) return;
-    }
     window.open($("result-url").textContent, "_blank", "noopener,noreferrer");
   });
   $("copy-clash").addEventListener("click", function () {
     var url = $("result-url").textContent;
-    if (prefs.authMode && $("key").value) {
-      if (!confirm("Clash 一键导入不支持 Header；继续将自动改用 ?pass= 形式（密钥会进入客户端日志）。")) return;
-      // 导出降级版 URL（带 pass）
-      var u = new URL(url);
-      u.searchParams.set("pass", $("key").value);
-      url = u.toString();
-    }
     var importUrl = "clash://install-config?url=" + encodeURIComponent(url) + "&name=Subconverter";
     copyText(importUrl, "已复制 Clash 一键导入链接");
-  });
-  $("copy-header").addEventListener("click", function () {
-    copyText($("result-header").textContent, "已复制 Header");
   });
 
   $("sub-url").addEventListener("keydown", function (e) {
@@ -464,7 +361,6 @@
 
   function generate() {
     var subUrl = $("sub-url").value.trim();
-    var key = $("key").value;
     var endpoint = $("endpoint").value.trim() || (location.origin);
 
     if (!subUrl) { toast("请填写订阅链接", true); $("sub-url").focus(); return; }
@@ -488,16 +384,7 @@
       u.searchParams.set("config", configUrl);
     }
 
-    var useHeader = prefs.authMode && key;
-    if (key && !useHeader) u.searchParams.set("pass", key);
-
     $("result-url").textContent = u.toString();
-    if (useHeader) {
-      $("result-header").textContent = "Authorization: Bearer " + key;
-      $("header-block").hidden = false;
-    } else {
-      $("header-block").hidden = true;
-    }
     $("output").hidden = false;
     $("output").scrollIntoView({ behavior: "smooth", block: "nearest" });
   }

@@ -3,10 +3,10 @@
 基于 **Cloudflare Worker** 的轻量订阅转换工具。输入订阅链接 → 输出 Clash / Clash Verge Rev / sing-box / v2ray 等客户端可直接使用的配置。
 
 - 一个 Worker 即承载 **API + 静态页**，无需额外服务
-- 支持 Cloudflare Secret 配置多个访问密钥，推荐 `Authorization: Bearer` 头鉴权（避免链接泄露）
+- 公开访问，无需密钥或自定义请求头
 - `/sub` 兼容常见 SubConverter 调用方式；`config=` 可加载 ACL4SSR/SubConverter INI
 - 为 OpenClash/Mihomo 生成完整 YAML，并直接展开远程规则，避免第三方 `/getruleset` 缓存
-- 静态页**纯浏览器拼接** URL，密钥默认仅在内存 / sessionStorage
+- 静态页**纯浏览器拼接** URL
 - 内置 **SSRF 防护**：拒绝内网/链路本地/回环目标，默认仅 HTTPS
 - 内置 **响应大小上限** 5MB，防止恶意订阅源 OOM/CPU DoS
 - 支持订阅源：节点 URI 列表（明文/Base64）、Clash YAML
@@ -20,18 +20,6 @@ GET /sub?url=<订阅链接>&target=<目标>&config=<外部 INI>
 GET /api/sub?url=<订阅链接>&target=<目标>&config=<外部 INI>
 GET /api/health
 ```
-
-### 鉴权（二选一，推荐 Header）
-
-```
-# 推荐：HTTP 头（不会出现在地址栏 / 浏览器历史 / 大多数日志中）
-Authorization: Bearer <密钥>
-
-# 兼容：URL 查询参数（密钥会随 URL 流入日志、历史、客户端日志）
-GET /sub?...&pass=<密钥>
-```
-
-> ⚠️ `?pass=` 的密钥**会被客户端、浏览器、CDN 日志记录**。仅在客户端不支持自定义请求头时使用。
 
 ### `target` 取值
 
@@ -48,7 +36,6 @@ GET /sub?...&pass=<密钥>
 | 状态 | 含义                                           |
 | ---- | ---------------------------------------------- |
 | 400  | 参数缺失/非法、订阅 URL 校验失败（含内网拦截） |
-| 401  | 缺少或无效的密钥                               |
 | 405  | 非 GET/HEAD 方法                               |
 | 413  | 上游响应超过 5MB                               |
 | 422  | 订阅源解析后无可用节点                         |
@@ -60,7 +47,7 @@ GET /sub?...&pass=<密钥>
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/detydanesu/subconverter)
 
-点击按钮后，Cloudflare 会部署本仓库。部署后按下文配置访问密钥即可使用。
+点击按钮后，Cloudflare 会部署本仓库。
 
 ### 手动部署
 
@@ -70,16 +57,7 @@ GET /sub?...&pass=<密钥>
 npm install
 ```
 
-#### 2. 配置访问密钥
-
-> 强烈建议密钥使用 ≥ 24 字符的随机串，例如 `openssl rand -hex 32`。
-
-```bash
-npx wrangler secret put STATIC_KEYS
-# 输入：k1,k2,k3
-```
-
-#### 3. （可选）开启 HTTP 订阅源支持
+#### 2. （可选）开启 HTTP 订阅源支持
 
 默认仅允许 `https://` 上游订阅源。如需放开：
 
@@ -90,24 +68,24 @@ npx wrangler secret put ALLOW_HTTP_SUBSCRIPTION
 
 > 不推荐：HTTP 上游订阅会让节点凭据在公网明文传输。
 
-#### 4. 推荐：在 Cloudflare Dashboard 配置速率限制
+#### 3. 推荐：在 Cloudflare Dashboard 配置速率限制
 
-密钥一旦泄露，攻击者可滥用 Worker 当作出站代理。建议在 **Worker 路由 / 自定义域** 上加 WAF 速率限制：
+本服务是公开接口，建议在 **Worker 路由 / 自定义域** 上加 WAF 速率限制：
 
 1. Cloudflare Dashboard → 选择 Worker 所属域 → **Security → WAF → Rate limiting rules**
 2. 新建规则，匹配条件：`URI Path contains /sub`
 3. 限制：例如 `60 requests per 1 minute per IP`，超出动作 `Block`（或 `Managed challenge`）
 
-> 免费版每域 1 条免费规则；Workers Paid Plan 推荐配合 [Workers Rate Limiting API](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) 做按密钥粒度限速。
+> 可以配合 [Workers Rate Limiting API](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) 或 Cloudflare WAF 做滥用防护。
 
-#### 5. 本地开发
+#### 4. 本地开发
 
 ```bash
 npm run dev          # 默认端口 8787
 npm run typecheck    # 类型检查
 ```
 
-#### 6. 部署到 Cloudflare
+#### 5. 部署到 Cloudflare
 
 ```bash
 npm run deploy
@@ -118,15 +96,9 @@ npm run deploy
 ## 使用流程
 
 1. 访问 Worker 的根路径，进入静态页
-2. 填入：原始订阅链接、目标格式、访问密钥
-3. **保留默认勾选的"使用 Authorization 请求头"**（更安全）
-4. 点击"生成订阅链接"，得到：
-   - 一段不含密钥的 URL
-   - 一段 `Authorization: Bearer ...` 请求头
-5. 在客户端的"订阅"中：
-   - URL 填入第 1 段
-   - "请求头/Headers" 填入第 2 段
-6. 客户端不支持自定义 Header 时，取消勾选，密钥会回退到 `?pass=` 形式
+2. 填入原始订阅链接并选择目标格式
+3. 点击"生成订阅链接"
+4. 将生成的 URL 填入客户端的"订阅"中
 
 ### OpenClash 在线订阅转换
 
@@ -136,13 +108,7 @@ OpenClash 的“订阅转换服务地址”填写 Worker 的 `/sub` 地址，例
 https://clash.example.com/sub
 ```
 
-Worker 的 `/version` 接口允许 OpenClash 检测后端版本。由于 OpenClash 构造转换请求时不能为该后端单独配置 `Authorization`，请在“自定义参数（Custom Params）”中另起一项填写：
-
-```text
-pass=<你的访问密钥>
-```
-
-不要把密钥直接附加在“订阅转换服务地址”后面；OpenClash 会自行追加转换参数。
+Worker 的 `/version` 接口允许 OpenClash 检测后端版本。无需在"自定义参数（Custom Params）"中填写 `pass`。
 
 ## 目录结构
 
@@ -152,7 +118,6 @@ pass=<你的访问密钥>
 │   └── index.html        前端单页（纯浏览器，无后端依赖）
 ├── src/
 │   ├── index.ts          Worker 入口与路由
-│   ├── auth.ts           Secret 鉴权（常量时间比较）
 │   ├── fetcher.ts        订阅源抓取（5MB 上限）
 │   ├── openclash.ts      外部 INI、策略组与规则展开
 │   ├── types.ts          代理节点中间表示
@@ -177,26 +142,19 @@ pass=<你的访问密钥>
 
 | 风险                              | 缓解措施                                                       |
 | --------------------------------- | -------------------------------------------------------------- |
-| 未授权调用                        | Cloudflare Secret 配置密钥；常量时间比较；最小输入长度校验      |
-| 密钥经 URL 泄露                   | 静态页默认推 Header 鉴权；密钥不写 localStorage（除非显式勾选）|
+| 公开接口被滥用                  | 建议为 `/sub` 配置 Cloudflare WAF 或速率限制             |
 | SSRF（内网/元数据/回环）          | `url-guard.ts` 拒绝 RFC1918 / loopback / link-local / `*.local` 等 |
 | 协议混用攻击                      | 仅放行 `http(s)`；默认禁 `http`，需 env 显式开启               |
 | 大响应 OOM / YAML 锚点炸弹 DoS    | Content-Length 预检 + 流式 5MB 上限                            |
 | 错误信息回显内部细节              | 上游错误统一脱敏，详细信息仅 `console.warn` 到 Worker 日志     |
 | 指纹暴露                          | `/api/health` 仅返回 `ok`；不再列出支持的 target               |
-| 时序旁路                          | 密钥列表鉴权使用常量时间比较                                   |
-| 滥用为出站代理（密钥泄露后放大） | 推荐配合 Cloudflare WAF 速率限制（见部署步骤 5）              |
+| 滥用为出站代理                | 推荐配合 Cloudflare WAF 速率限制（见部署步骤 3）              |
 
 ### 仍需用户警惕
 
-- **原始订阅 URL 自带 token**——把它放进 `url=` 参数后，本服务的访问密钥泄露 ≈ 你订阅商的 token 一同泄露。建议：① 仅给可信用户分发密钥；② 一密钥一人，便于撤销
-- **共享设备**：默认密钥放 sessionStorage，关页面即清；但勾选了"在本机记住密钥"后会写 localStorage，请谨慎
-- **客户端日志**：Clash Verge / sing-box 等客户端可能会把订阅 URL 写进自己的 log；用 Header 鉴权可避免
+- **原始订阅 URL 自带 token**——把它放进公开转换 URL 后，客户端、浏览器或 CDN 日志可能会记录它，请不要公开分享生成的完整 URL
 
 ## 常见问题
-
-**Q：返回 401？**
-密钥未配置或拼错。确认 Cloudflare Secret `STATIC_KEYS` 已设置。Header 鉴权请确保格式 `Authorization: Bearer <key>`，不接受裸 token。
 
 **Q：返回 400 "禁止访问内网"？**
 SSRF 防护拦截了。订阅 URL 指向了 `127.0.0.1` / `192.168.x.x` / `localhost` / `*.local` 等内部目标。订阅源应当是公网可达的服务。

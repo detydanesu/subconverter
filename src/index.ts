@@ -1,5 +1,4 @@
 // Worker 入口
-import { authenticate } from "./auth";
 import { SUPPORTED_TARGETS, convert, isValidTarget } from "./converters";
 import { FetchUpstreamError, fetchSubscription } from "./fetcher";
 import { toOpenClash } from "./openclash";
@@ -49,22 +48,8 @@ async function handleSub(req: Request, env: Env, url: URL): Promise<Response> {
 
   const subUrl = url.searchParams.get("url");
   const target = (url.searchParams.get("target") || "clash").toLowerCase();
-  const pass = url.searchParams.get("pass");
   const configUrl = url.searchParams.get("config");
 
-  // 鉴权前不暴露任何业务细节：未通过鉴权一律 401，避免被作为参数探测器
-  const authed = await authenticate(req, env, pass);
-  if (!authed) {
-    return new Response("Unauthorized", {
-      status: 401,
-      headers: {
-        "WWW-Authenticate": 'Bearer realm="subconverter"',
-        "Content-Type": "text/plain; charset=utf-8",
-      },
-    });
-  }
-
-  // 鉴权后才进行参数校验，错误信息也只对授权用户显示
   if (!subUrl) return errText("缺少必要参数 url", 400);
   if (!isValidTarget(target)) {
     return errText(
