@@ -3,7 +3,6 @@
 // Runtime types generated with workerd@1.20260911.1 2026-09-12 nodejs_compat
 interface __BaseEnv_Env {
 	ASSETS: Fetcher;
-	STATIC_KEYS: string;
 	ALLOW_HTTP_SUBSCRIPTION: string;
 	DEFAULT_UA: string;
 }
@@ -18,7 +17,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "STATIC_KEYS" | "ALLOW_HTTP_SUBSCRIPTION" | "DEFAULT_UA">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "ALLOW_HTTP_SUBSCRIPTION" | "DEFAULT_UA">> {}
 }
 
 // Begin runtime types
