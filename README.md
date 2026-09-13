@@ -128,6 +128,22 @@ npm run deploy
    - "请求头/Headers" 填入第 2 段
 6. 客户端不支持自定义 Header 时，取消勾选，密钥会回退到 `?pass=` 形式
 
+### OpenClash 在线订阅转换
+
+OpenClash 的“订阅转换服务地址”填写 Worker 的 `/sub` 地址，例如：
+
+```text
+https://clash.example.com/sub
+```
+
+Worker 的 `/version` 接口允许 OpenClash 检测后端版本。由于 OpenClash 构造转换请求时不能为该后端单独配置 `Authorization`，请在“自定义参数（Custom Params）”中另起一项填写：
+
+```text
+pass=<你的访问密钥>
+```
+
+不要把密钥直接附加在“订阅转换服务地址”后面；OpenClash 会自行追加转换参数。
+
 ## 目录结构
 
 ```

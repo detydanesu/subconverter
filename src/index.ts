@@ -15,6 +15,19 @@ export default {
     if (url.pathname === "/api/sub" || url.pathname === "/sub") {
       return handleSub(req, env, url);
     }
+    if (url.pathname === "/version") {
+      // OpenClash probes the backend origin at /version before accepting a
+      // subscription-conversion service. This endpoint must be public and
+      // cross-origin readable because LuCI performs the check in the browser.
+      return new Response("subconverter-worker v0.1.0", {
+        status: 200,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Cache-Control": "no-store",
+          "Content-Type": "text/plain; charset=utf-8",
+        },
+      });
+    }
     if (url.pathname === "/api/health") {
       // 不再泄露功能指纹（targets / 版本等）
       return new Response("ok", {
