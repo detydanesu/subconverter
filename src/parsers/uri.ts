@@ -102,6 +102,10 @@ function parseVless(uri: string): VlessNode | null {
     fingerprint: u.params.get("fp") || undefined,
     publicKey: u.params.get("pbk") || undefined,
     shortId: u.params.get("sid") || undefined,
+    skipCertVerify:
+      isTruthy(u.params.get("allowInsecure")) ||
+      isTruthy(u.params.get("allow_insecure")) ||
+      isTruthy(u.params.get("insecure")),
     raw: uri,
   };
 }
@@ -272,7 +276,10 @@ function parseTuic(uri: string): TuicNode | null {
     alpn: parseAlpn(u.params.get("alpn")) || ["h3"],
     congestionControl: u.params.get("congestion_control") || "bbr",
     udpRelayMode: u.params.get("udp_relay_mode") || "native",
-    skipCertVerify: u.params.get("allow_insecure") === "1",
+    skipCertVerify:
+      isTruthy(u.params.get("insecure")) ||
+      isTruthy(u.params.get("allow_insecure")) ||
+      isTruthy(u.params.get("allowInsecure")),
     raw: uri,
   };
 }
@@ -330,4 +337,9 @@ function parseAlpn(v: any): string[] | undefined {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+function isTruthy(value: string | null): boolean {
+  if (value === null) return false;
+  return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
 }

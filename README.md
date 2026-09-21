@@ -21,6 +21,12 @@ GET /api/sub?url=<订阅链接>&target=<目标>&config=<外部 INI>
 GET /api/health
 ```
 
+`/sub` also accepts the OpenClash-compatible conversion switches `scv`, `udp`
+and `new_name`. `scv=true` applies `skip-cert-verify: true` to TLS nodes,
+including VLESS and TUIC. VLESS `allowInsecure=1` and TUIC `insecure=1` are
+preserved when converting URI subscriptions. This Worker emits an inline
+Clash `proxies` list; external INI profiles only replace groups and rules.
+
 ### `target` 取值
 
 | target        | 适用客户端                                    |

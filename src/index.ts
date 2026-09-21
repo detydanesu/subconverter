@@ -3,6 +3,7 @@ import { SUPPORTED_TARGETS, convert, isValidTarget } from "./converters";
 import { FetchUpstreamError, fetchSubscription } from "./fetcher";
 import { toOpenClash } from "./openclash";
 import { parseAny } from "./parsers";
+import { applyRequestOptions } from "./request-options";
 import type { Target } from "./types";
 import { validateSubscriptionUrl } from "./utils/url-guard";
 
@@ -73,7 +74,7 @@ async function handleSub(req: Request, env: Env, url: URL): Promise<Response> {
     return errText("订阅源不可用", 502);
   }
 
-  const nodes = parseAny(raw.text);
+  const nodes = applyRequestOptions(parseAny(raw.text), url.searchParams);
   if (nodes.length === 0) {
     return errText("未从订阅源解析出任何节点（格式不支持或源拒绝访问）", 422);
   }
